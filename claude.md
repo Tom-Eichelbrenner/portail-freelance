@@ -1,63 +1,80 @@
 Portail Client Freelances — CLAUDE.md
 
-Projet
+## Projet
 
 SaaS B2B pour freelances français. Un portail client tout-en-un : partage de fichiers, messagerie projet, statut de mission, facturation conforme droit français.
 
-Stack
+## Stack
 
+- Framework : **Next.js 16.2.9**, App Router, React 19, TypeScript strict
+- Auth : Supabase Auth (JWT en httpOnly cookie via `@supabase/ssr`)
+- Base de données : Supabase (PostgreSQL) + Drizzle ORM
+- Fichiers : Cloudflare R2 (presigned URLs, jamais le bucket exposé publiquement)
+- Paiements SaaS : Stripe Billing (abonnements freelance)
+- Paiements clients : Stripe Payment Links (factures payables depuis le portail)
+- Email : Resend + React Email
+- Déploiement : Vercel
+- Styles : Tailwind CSS v4
 
-Framework : Next.js 15, App Router, React 19, TypeScript strict
-Auth : Supabase Auth (JWT en httpOnly cookie via @supabase/ssr)
-Base de données : Supabase (PostgreSQL) + Drizzle ORM
-Fichiers : Cloudflare R2 (presigned URLs, jamais le bucket exposé publiquement)
-Paiements SaaS : Stripe Billing (abonnements freelance)
-Paiements clients : Stripe Payment Links (factures payables depuis le portail)
-Email : Resend + React Email
-Déploiement : Vercel
-Styles : Tailwind CSS
+## Breaking changes Next.js 16
 
+- `middleware.ts` est renommé **`proxy.ts`** — la fonction export s'appelle `proxy`, pas `middleware`
+- Voir `src/proxy.ts`, ne jamais créer de `middleware.ts`
 
-Structure des dossiers
+## Structure des dossiers
 
+```
 src/
   app/
-    (auth)/           # login, signup, callback
-    (dashboard)/      # espace freelance (protégé)
-    portal/[slug]/    # portail client (accès magic link)
+    (auth)/           # login, signup
+    (dashboard)/      # espace freelance (protégé par proxy.ts)
+    portal/[slug]/    # portail client (accès token magic link)
+    actions/
+      auth.ts         # login, signup, logout (Server Actions)
+      client.ts       # inviteClient (Server Actions)
     api/
       auth/           # callbacks Supabase
+      portal/validate/ # validation token invite → pose cookie httpOnly
       stripe/         # checkout, webhooks
       uploads/        # presigned URLs R2
+    auth/callback/    # échange code OAuth Supabase → session
   db/
-    schema.ts         # schéma Drizzle
-    migrations/       # fichiers SQL générés
-    index.ts          # client Drizzle
+    schema.ts         # schéma Drizzle (7 tables)
+    migrations/       # fichiers SQL générés par drizzle-kit
+    rls.sql           # politiques RLS à appliquer dans Supabase SQL Editor
+    index.ts          # client Drizzle (postgres.js)
   lib/
+    auth.ts           # getUser(), getUserWorkspace(), requireAuth()
     supabase/
-      server.ts       # createServerClient()
-      client.ts       # createBrowserClient()
-    stripe.ts         # client Stripe
-    r2.ts             # client S3-compatible R2
-    resend.ts         # client Resend
+      server.ts       # createClient() + createServiceClient()
+      client.ts       # createClient() browser
+    stripe.ts
+    r2.ts
+    resend.ts
   components/
-    ui/               # composants génériques (Button, Input, Modal...)
-    dashboard/        # composants espace freelance
+    ui/               # composants génériques
+    dashboard/        # InviteForm.tsx et autres composants freelance
     portal/           # composants vue client
-  emails/             # templates React Email
-  middleware.ts       # protection des routes
+  emails/
+    InviteEmail.tsx   # template email invitation client
+  proxy.ts            # protection routes (Next.js 16 = middleware)
+```
 
-Variables d'environnement (.env.local)
+## Variables d'environnement
 
+Noms exacts à utiliser (différents des docs Supabase classiques) :
+
+```
 NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=        # serveur uniquement, jamais côté client
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=   # (pas ANON_KEY)
+SUPABASE_SECRET_KEY=                     # (pas SERVICE_ROLE_KEY)
 
 STRIPE_SECRET_KEY=
 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=
 STRIPE_WEBHOOK_SECRET=
 
 RESEND_API_KEY=
+RESEND_FROM_EMAIL=onboarding@resend.dev  # domaine vérifié en prod
 
 CLOUDFLARE_R2_ACCOUNT_ID=
 CLOUDFLARE_R2_ACCESS_KEY_ID=
@@ -65,55 +82,93 @@ CLOUDFLARE_R2_SECRET_ACCESS_KEY=
 CLOUDFLARE_R2_BUCKET_NAME=
 CLOUDFLARE_R2_PUBLIC_URL=
 
-Multi-tenancy
+DATABASE_URL=   # session pooler Supabase (port 5432) — voir note ci-dessous
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+```
 
+### DATABASE_URL — connexion Supabase depuis WSL2
 
-Chaque freelance a un workspace avec un slug unique
-Les portails clients sont accessibles à /portal/[workspace-slug]
-Pas de sous-domaines pour l'instant (complexité wildcard SSL inutile au MVP)
-Toutes les queries Drizzle sont filtrées par workspace_id
-RLS Supabase en double sécurité : workspace_id = auth.uid() sur toutes les tables
+Le host direct Supabase (`db.*.supabase.co`) n'a que des enregistrements AAAA (IPv6), **non routé dans WSL2**. Utiliser le **session pooler** (IPv4) :
 
+```
+postgresql://postgres.<project-ref>:<password>@aws-1-eu-central-1.pooler.supabase.com:5432/postgres
+```
 
-Auth Flow
+Obtenir l'URL : Supabase → Connect → Direct → Connection Method : **Session pooler**.
 
+## Multi-tenancy
 
-Freelance : email/password via Supabase Auth → redirigé vers /dashboard
-Client du freelance : magic link envoyé par le freelance → accès /portal/[slug] sans compte Supabase
-Middleware src/middleware.ts :
+- Chaque freelance a un workspace avec un slug unique (`<nom-slugifié>-<8 premiers chars uuid>`)
+- Les portails clients sont accessibles à `/portal/[workspace-slug]`
+- Pas de sous-domaines pour l'instant
+- Toutes les queries Drizzle filtrées par `workspace_id`
+- RLS Supabase en double sécurité sur toutes les tables
 
-/dashboard/* → auth requise (freelance)
-/portal/* → token magic link vérifié (client invité)
-/api/stripe/webhook → jamais protégé par middleware auth
+## Auth Flow
 
+**Freelance :**
 
+- Signup → `supabase.auth.signUp()` + insert `users` + `workspaces` en transaction Drizzle → `/dashboard`
+- Login → `supabase.auth.signInWithPassword()` → `/dashboard`
+- Logout → `supabase.auth.signOut()` → `/login`
+- `proxy.ts` redirige `/dashboard` → `/login` si pas de session
 
+**Client invité :**
 
+- Freelance envoie invite via `inviteClient()` : crée entry `clients` avec `invite_token` (UUID) + `invite_expires_at` (7j), envoie email Resend
+- Client clique lien `/portal/[slug]?token=xxx`
+- Page redirige vers `/api/portal/validate?token=xxx&slug=yyy`
+- Route handler valide le token (DB + expiration), pose cookie `portal_token` (httpOnly, SameSite=Lax, 30j)
+- Redirect vers `/portal/[slug]` — page lit le cookie et affiche le portail
 
-Conventions importantes
+## Ce qui est implémenté (session 2026-06-20)
 
+- [x] Schéma Drizzle (7 tables) + migrations appliquées + RLS
+- [x] `src/lib/auth.ts` : `getUser`, `getUserWorkspace`, `requireAuth`
+- [x] Auth freelance : signup, login, logout
+- [x] `proxy.ts` : session refresh Supabase + protection `/dashboard`
+- [x] Dashboard : affiche nom/slug, liste clients, formulaire invitation
+- [x] Invitation client : Server Action `inviteClient` + email Resend
+- [x] Portail client : validation token → cookie → accès `/portal/[slug]`
+- [x] Route `/auth/callback` pour OAuth/magic link Supabase
 
-Soft deletes partout : colonne deleted_at TIMESTAMPTZ sur toutes les tables, jamais de DELETE SQL
-Service role key : uniquement dans les Server Actions et API routes, jamais exposée au navigateur
-Fichiers R2 : toujours via presigned URL générée côté serveur, jamais le bucket public
-Stripe webhook : route /api/stripe/webhook exclue du middleware auth, signature vérifiée via stripe.webhooks.constructEvent()
-Drizzle : pas de select *, toujours lister les colonnes explicitement
-Notifications : table notification_queue pour toutes les notifications email (fire-and-forget via Resend, loggable)
+## À implémenter
 
+- Upload fichiers R2 (presigned URLs)
+- Messagerie projet (messages par projet)
+- Statut de mission (projects.status)
+- Stripe Billing (abonnements freelance)
+- Stripe Payment Links (factures clients)
+- Page projet dans le portail client
+- UI/design (actuellement Tailwind brut sans composants)
 
-Commandes utiles
+## Conventions importantes
 
-bashnpm run dev          # dev server
+- **Soft deletes partout** : colonne `deleted_at` sur toutes les tables, jamais de DELETE SQL
+- **Server Actions** dans `src/app/actions/` avec `"use server"` en tête de fichier
+- **Validation Zod** sur tous les inputs des Server Actions avant écriture en DB
+- **`SUPABASE_SECRET_KEY`** uniquement dans Server Actions et Route Handlers
+- **Fichiers R2** : toujours via presigned URL générée côté serveur
+- **Stripe webhook** : exclue du proxy auth, vérifier signature via `stripe.webhooks.constructEvent()`
+- **Cookie portal_token** : httpOnly, SameSite=Lax, Secure en prod, maxAge 30j
+
+## Commandes utiles
+
+```bash
+npm run dev          # dev server
 npm run db:generate  # générer les migrations Drizzle
-npm run db:migrate   # appliquer les migrations sur Supabase
+npm run db:migrate   # appliquer les migrations sur Supabase (via session pooler)
 npm run db:studio    # Drizzle Studio (UI DB)
-stripe listen --forward-to localhost:3000/api/stripe/webhook  # webhook local
+stripe listen --forward-to localhost:3000/api/stripe/webhook
+```
 
-À ne jamais faire
+## À ne jamais faire
 
-
-Ne pas utiliser localStorage pour stocker des tokens auth
-Ne pas mettre SUPABASE_SERVICE_ROLE_KEY dans une variable NEXT_PUBLIC_
-Ne pas exposer le bucket R2 en accès public
-Ne pas oublier d'exclure /api/stripe/webhook du middleware
-Ne pas faire de hard delete sur les données utilisateur
+- Créer un `middleware.ts` — utiliser `proxy.ts` (Next.js 16)
+- Utiliser `NEXT_PUBLIC_SUPABASE_ANON_KEY` — s'appelle `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+- Utiliser `SUPABASE_SERVICE_ROLE_KEY` — s'appelle `SUPABASE_SECRET_KEY`
+- Mettre `SUPABASE_SECRET_KEY` dans une variable `NEXT_PUBLIC_`
+- Exposer le bucket R2 en accès public
+- Hard delete sur les données utilisateur
+- Chaîner `.where().where()` en Drizzle — utiliser `and()` à la place
+- Utiliser le DATABASE_URL direct (`db.*.supabase.co`) depuis WSL2 — IPv6 uniquement

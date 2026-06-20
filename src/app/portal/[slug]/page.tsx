@@ -2,7 +2,14 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { and, asc, eq, gt, inArray, isNull } from "drizzle-orm";
 import { db } from "@/db";
-import { clients, files, messages, projects, workspaces } from "@/db/schema";
+import {
+  clients,
+  files,
+  invoices,
+  messages,
+  projects,
+  workspaces,
+} from "@/db/schema";
 import FileUpload from "@/components/ui/FileUpload";
 import MessageThread from "@/components/ui/MessageThread";
 import { STATUS_LABELS, STATUS_CLASSES } from "@/lib/project-statuses";
@@ -100,7 +107,7 @@ export default async function PortalPage({ params, searchParams }: Props) {
 
   const projectIds = clientProjects.map((p) => p.id);
 
-  const [fileList, messageList] =
+  const [fileList, messageList, invoiceList] =
     projectIds.length > 0
       ? await Promise.all([
           db
@@ -123,8 +130,18 @@ export default async function PortalPage({ params, searchParams }: Props) {
               ),
             )
             .orderBy(asc(messages.createdAt)),
+          db
+            .select()
+            .from(invoices)
+            .where(
+              and(
+                inArray(invoices.projectId, projectIds),
+                isNull(invoices.deletedAt),
+              ),
+            )
+            .orderBy(asc(invoices.createdAt)),
         ])
-      : [[], []];
+      : [[], [], []];
 
   const filesByProject = fileList.reduce<Record<string, typeof fileList>>(
     (acc, f) => {
@@ -138,6 +155,13 @@ export default async function PortalPage({ params, searchParams }: Props) {
     Record<string, typeof messageList>
   >((acc, m) => {
     (acc[m.projectId] ??= []).push(m);
+    return acc;
+  }, {});
+
+  const invoicesByProject = invoiceList.reduce<
+    Record<string, typeof invoiceList>
+  >((acc, inv) => {
+    (acc[inv.projectId] ??= []).push(inv);
     return acc;
   }, {});
 
@@ -184,6 +208,8 @@ export default async function PortalPage({ params, searchParams }: Props) {
                 }),
               );
 
+              const projectInvoices = invoicesByProject[project.id] ?? [];
+
               return (
                 <div
                   key={project.id}
@@ -218,6 +244,49 @@ export default async function PortalPage({ params, searchParams }: Props) {
                     initialMessages={projectMessages}
                     viewerType="client"
                   />
+
+                  {/* Invoices */}
+                  {projectInvoices.length > 0 && (
+                    <div className="mt-4">
+                      <h4 className="text-sm font-semibold text-gray-700 mb-2">
+                        Factures
+                      </h4>
+                      <div className="space-y-2">
+                        {projectInvoices.map((inv) => (
+                          <div
+                            key={inv.id}
+                            className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100"
+                          >
+                            <div className="min-w-0 mr-3">
+                              <p className="text-sm font-medium text-gray-900 truncate">
+                                {inv.description}
+                              </p>
+                              <p className="text-xs text-gray-500 mt-0.5">
+                                {inv.createdAt.toLocaleDateString("fr-FR")} ·{" "}
+                                {inv.amount / 100}€
+                              </p>
+                            </div>
+                            <div className="shrink-0">
+                              {inv.status === "paid" ? (
+                                <span className="text-xs bg-green-100 text-green-700 rounded-full px-3 py-1 font-medium">
+                                  Payée
+                                </span>
+                              ) : (
+                                <a
+                                  href={inv.stripePaymentLinkUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs bg-indigo-600 text-white rounded-full px-3 py-1 font-medium hover:bg-indigo-700"
+                                >
+                                  Payer maintenant
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}

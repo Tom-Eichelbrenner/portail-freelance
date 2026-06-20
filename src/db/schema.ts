@@ -3,6 +3,7 @@ import {
   uuid,
   text,
   bigint,
+  integer,
   jsonb,
   timestamp,
 } from "drizzle-orm/pg-core";
@@ -21,6 +22,7 @@ export const users = pgTable("users", {
   stripeCustomerId: text("stripe_customer_id"),
   subscriptionStatus: text("subscription_status").notNull().default("inactive"),
   subscriptionId: text("subscription_id"),
+  subscriptionPlan: text("subscription_plan"),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -94,6 +96,27 @@ export const messages = pgTable("messages", {
     .references(() => workspaces.id),
   authorType: text("author_type").notNull(),
   content: text("content").notNull(),
+  ...timestamps,
+});
+
+export const invoices = pgTable("invoices", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id")
+    .notNull()
+    .references(() => workspaces.id),
+  projectId: uuid("project_id")
+    .notNull()
+    .references(() => projects.id),
+  clientId: uuid("client_id")
+    .notNull()
+    .references(() => clients.id),
+  stripePaymentLinkId: text("stripe_payment_link_id").notNull(),
+  stripePaymentLinkUrl: text("stripe_payment_link_url").notNull(),
+  amount: integer("amount").notNull(),
+  currency: text("currency").notNull().default("EUR"),
+  description: text("description").notNull(),
+  status: text("status").notNull().default("pending"),
+  paidAt: timestamp("paid_at", { withTimezone: true }),
   ...timestamps,
 });
 

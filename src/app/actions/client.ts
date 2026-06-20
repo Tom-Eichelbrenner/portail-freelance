@@ -7,6 +7,7 @@ import { db } from "@/db";
 import { clients } from "@/db/schema";
 import { resend } from "@/lib/resend";
 import { requireAuth } from "@/lib/auth";
+import { canAddClient } from "@/lib/subscription";
 import InviteEmail from "@/emails/InviteEmail";
 
 const inviteSchema = z.object({
@@ -21,7 +22,7 @@ export async function inviteClient(
   prevState: InviteState,
   formData: FormData,
 ): Promise<InviteState> {
-  const { workspace } = await requireAuth();
+  const { user, workspace } = await requireAuth();
 
   const parsed = inviteSchema.safeParse({
     clientName: formData.get("clientName"),
@@ -38,6 +39,11 @@ export async function inviteClient(
 
   if (parsed.data.workspaceId !== workspace.id) {
     return { error: "Workspace invalide", success: null };
+  }
+
+  const guard = await canAddClient(user.id, workspace.id);
+  if (!guard.allowed) {
+    return { error: guard.error ?? "Limite atteinte", success: null };
   }
 
   const existing = await db
@@ -82,11 +88,13 @@ export async function inviteClient(
   });
 
   if (emailError) {
-    return { error: "Erreur lors de l'envoi de l'email", success: null };
+    console.warn("Email non envoyé (Resend):", emailError);
   }
 
   return {
     error: null,
-    success: `Invitation envoyée à ${parsed.data.clientEmail}`,
+    success: emailError
+      ? `Client ajouté. Email non envoyé (${emailError.message}) — lien : ${portalLink}`
+      : `Invitation envoyée à ${parsed.data.clientEmail}`,
   };
 }

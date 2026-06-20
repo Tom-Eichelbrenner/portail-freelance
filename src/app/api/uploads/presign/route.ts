@@ -6,6 +6,7 @@ import { db } from "@/db";
 import { clients, files, projects } from "@/db/schema";
 import { getUserWorkspace } from "@/lib/auth";
 import { getPresignedUploadUrl } from "@/lib/r2";
+import { canUploadFile } from "@/lib/subscription";
 
 const MAX_SIZE = 50 * 1024 * 1024;
 
@@ -35,7 +36,12 @@ export async function POST(request: NextRequest) {
   // Try freelance auth
   const freelanceData = await getUserWorkspace();
   if (freelanceData) {
-    const { workspace } = freelanceData;
+    const { user, workspace } = freelanceData;
+
+    const uploadGuard = await canUploadFile(user.id, workspace.id, sizeBytes);
+    if (!uploadGuard.allowed) {
+      return NextResponse.json({ error: uploadGuard.error }, { status: 403 });
+    }
 
     const projectRows = await db
       .select()

@@ -2,45 +2,70 @@ import { and, asc, eq, isNull } from "drizzle-orm";
 import { requireAuth } from "@/lib/auth";
 import { logout } from "@/app/actions/auth";
 import { deleteProjectAction } from "@/app/actions/projects";
+import { createBillingPortalSession } from "@/app/actions/stripe";
 import { db } from "@/db";
-import { clients, files, messages, projects } from "@/db/schema";
+import { clients, files, invoices, messages, projects } from "@/db/schema";
 import InviteForm from "@/components/dashboard/InviteForm";
 import CreateProjectForm from "@/components/dashboard/CreateProjectForm";
 import StatusButton from "@/components/dashboard/StatusButton";
+import InvoiceForm from "@/components/dashboard/InvoiceForm";
 import FileUpload from "@/components/ui/FileUpload";
 import MessageThread from "@/components/ui/MessageThread";
+import { isPlanPro } from "@/lib/subscription";
 
 export default async function DashboardPage() {
   const { user, workspace } = await requireAuth();
 
-  const [clientList, projectList, fileList, messageList] = await Promise.all([
-    db
-      .select()
-      .from(clients)
-      .where(
-        and(eq(clients.workspaceId, workspace.id), isNull(clients.deletedAt)),
-      )
-      .orderBy(asc(clients.createdAt)),
-    db
-      .select()
-      .from(projects)
-      .where(
-        and(eq(projects.workspaceId, workspace.id), isNull(projects.deletedAt)),
-      )
-      .orderBy(asc(projects.createdAt)),
-    db
-      .select()
-      .from(files)
-      .where(and(eq(files.workspaceId, workspace.id), isNull(files.deletedAt)))
-      .orderBy(asc(files.createdAt)),
-    db
-      .select()
-      .from(messages)
-      .where(
-        and(eq(messages.workspaceId, workspace.id), isNull(messages.deletedAt)),
-      )
-      .orderBy(asc(messages.createdAt)),
-  ]);
+  const isPro = isPlanPro(user.subscriptionPlan);
+  const isActive = user.subscriptionStatus === "active";
+
+  const [clientList, projectList, fileList, messageList, invoiceList] =
+    await Promise.all([
+      db
+        .select()
+        .from(clients)
+        .where(
+          and(eq(clients.workspaceId, workspace.id), isNull(clients.deletedAt)),
+        )
+        .orderBy(asc(clients.createdAt)),
+      db
+        .select()
+        .from(projects)
+        .where(
+          and(
+            eq(projects.workspaceId, workspace.id),
+            isNull(projects.deletedAt),
+          ),
+        )
+        .orderBy(asc(projects.createdAt)),
+      db
+        .select()
+        .from(files)
+        .where(
+          and(eq(files.workspaceId, workspace.id), isNull(files.deletedAt)),
+        )
+        .orderBy(asc(files.createdAt)),
+      db
+        .select()
+        .from(messages)
+        .where(
+          and(
+            eq(messages.workspaceId, workspace.id),
+            isNull(messages.deletedAt),
+          ),
+        )
+        .orderBy(asc(messages.createdAt)),
+      db
+        .select()
+        .from(invoices)
+        .where(
+          and(
+            eq(invoices.workspaceId, workspace.id),
+            isNull(invoices.deletedAt),
+          ),
+        )
+        .orderBy(asc(invoices.createdAt)),
+    ]);
 
   const projectsByClient = projectList.reduce<
     Record<string, typeof projectList>
@@ -61,6 +86,13 @@ export default async function DashboardPage() {
     Record<string, typeof messageList>
   >((acc, m) => {
     (acc[m.projectId] ??= []).push(m);
+    return acc;
+  }, {});
+
+  const invoicesByProject = invoiceList.reduce<
+    Record<string, typeof invoiceList>
+  >((acc, inv) => {
+    (acc[inv.projectId] ??= []).push(inv);
     return acc;
   }, {});
 
@@ -86,6 +118,44 @@ export default async function DashboardPage() {
             Déconnexion
           </button>
         </form>
+      </div>
+
+      {/* Subscription banner */}
+      <div className="border border-gray-200 rounded-lg p-4 flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium text-gray-700">
+            Plan actuel :{" "}
+            {isActive ? (
+              <span className="text-indigo-600 font-semibold capitalize">
+                {user.subscriptionPlan ?? "actif"}
+              </span>
+            ) : (
+              <span className="text-gray-400">Aucun abonnement</span>
+            )}
+          </p>
+          {!isActive && (
+            <p className="text-xs text-gray-500 mt-0.5">
+              Souscrivez pour débloquer toutes les fonctionnalités.
+            </p>
+          )}
+        </div>
+        {isActive ? (
+          <form action={createBillingPortalSession}>
+            <button
+              type="submit"
+              className="text-sm text-indigo-600 border border-indigo-300 rounded px-3 py-1.5 hover:bg-indigo-50"
+            >
+              Gérer mon abonnement
+            </button>
+          </form>
+        ) : (
+          <a
+            href="/pricing"
+            className="text-sm bg-indigo-600 text-white rounded px-3 py-1.5 hover:bg-indigo-700"
+          >
+            Voir les plans
+          </a>
+        )}
       </div>
 
       <InviteForm workspaceId={workspace.id} />
@@ -144,6 +214,9 @@ export default async function DashboardPage() {
                           createdAt: m.createdAt.toISOString(),
                         }));
 
+                        const projectInvoices =
+                          invoicesByProject[project.id] ?? [];
+
                         return (
                           <div key={project.id} className="px-4 py-4">
                             <div className="flex items-start justify-between gap-3">
@@ -190,6 +263,51 @@ export default async function DashboardPage() {
                               initialMessages={projectMessages}
                               viewerType="freelance"
                             />
+
+                            {/* Billing section — Pro only */}
+                            {isPro && (
+                              <div className="mt-4">
+                                <h4 className="text-sm font-semibold text-gray-700 mb-2">
+                                  Facturation
+                                </h4>
+
+                                {projectInvoices.length > 0 && (
+                                  <div className="space-y-1 mb-3">
+                                    {projectInvoices.map((inv) => (
+                                      <div
+                                        key={inv.id}
+                                        className="flex items-center justify-between text-sm py-1.5 px-2 bg-gray-50 rounded"
+                                      >
+                                        <span className="text-gray-700 truncate mr-2">
+                                          {inv.description}
+                                        </span>
+                                        <div className="flex items-center gap-2 shrink-0">
+                                          <span className="font-medium">
+                                            {inv.amount / 100}€
+                                          </span>
+                                          {inv.status === "paid" ? (
+                                            <span className="text-xs bg-green-100 text-green-700 rounded-full px-2 py-0.5 font-medium">
+                                              Payée
+                                            </span>
+                                          ) : (
+                                            <span className="text-xs bg-yellow-100 text-yellow-700 rounded-full px-2 py-0.5 font-medium">
+                                              En attente
+                                            </span>
+                                          )}
+                                          <span className="text-gray-400 text-xs">
+                                            {inv.createdAt.toLocaleDateString(
+                                              "fr-FR",
+                                            )}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                <InvoiceForm projectId={project.id} />
+                              </div>
+                            )}
                           </div>
                         );
                       })}

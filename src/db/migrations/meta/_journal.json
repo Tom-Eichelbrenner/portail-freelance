@@ -8,6 +8,13 @@
       "when": 1781918402315,
       "tag": "0000_round_daimon_hellstrom",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1781958127767,
+      "tag": "0001_rainy_giant_man",
+      "breakpoints": true
     }
   ]
 }
