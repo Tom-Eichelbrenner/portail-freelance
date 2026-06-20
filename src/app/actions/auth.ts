@@ -39,13 +39,25 @@ export async function login(
     return { error: parsed.error.issues[0]?.message ?? "Données invalides" };
   }
 
-  const supabase = await createClient();
+  let supabase;
+  try {
+    supabase = await createClient();
+  } catch {
+    return { error: "Erreur de connexion au serveur" };
+  }
+
   const { error } = await supabase.auth.signInWithPassword({
     email: parsed.data.email,
     password: parsed.data.password,
   });
 
   if (error) {
+    if (
+      error.message.toLowerCase().includes("email") &&
+      error.message.toLowerCase().includes("confirm")
+    ) {
+      return { error: "Confirmez votre email avant de vous connecter" };
+    }
     return { error: "Email ou mot de passe incorrect" };
   }
 

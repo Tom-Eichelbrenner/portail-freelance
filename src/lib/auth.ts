@@ -31,7 +31,14 @@ export async function getUserWorkspace() {
 }
 
 export async function requireAuth() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) redirect("/login");
+
   const data = await getUserWorkspace();
-  if (!data) redirect("/login");
+  if (!data) redirect("/login?error=no_workspace");
   return data;
 }
