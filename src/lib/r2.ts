@@ -12,13 +12,17 @@ const r2 = new S3Client({
     accessKeyId: process.env.CLOUDFLARE_R2_ACCESS_KEY_ID!,
     secretAccessKey: process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY!,
   },
+  // AWS SDK v3 adds CRC32 checksums by default. These end up in the presigned
+  // URL query string and browsers can't compute them before sending — 403 on PUT.
+  requestChecksumCalculation: "WHEN_REQUIRED",
+  responseChecksumValidation: "WHEN_REQUIRED",
 });
 
 const BUCKET = process.env.CLOUDFLARE_R2_BUCKET_NAME!;
 
 export async function getPresignedUploadUrl(key: string): Promise<string> {
   const command = new PutObjectCommand({ Bucket: BUCKET, Key: key });
-  return getSignedUrl(r2, command, { expiresIn: 3600 });
+  return getSignedUrl(r2, command, { expiresIn: 300 }); // 5 minutes
 }
 
 export async function getPresignedDownloadUrl(key: string): Promise<string> {

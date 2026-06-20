@@ -1,8 +1,11 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { and, eq, gt, isNull } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull } from "drizzle-orm";
 import { db } from "@/db";
-import { clients, projects, workspaces } from "@/db/schema";
+import { clients, files, messages, projects, workspaces } from "@/db/schema";
+import FileUpload from "@/components/ui/FileUpload";
+import MessageThread from "@/components/ui/MessageThread";
+import { STATUS_LABELS, STATUS_CLASSES } from "@/lib/project-statuses";
 
 interface Props {
   params: Promise<{ slug: string }>;
@@ -13,7 +16,6 @@ export default async function PortalPage({ params, searchParams }: Props) {
   const { slug } = await params;
   const { token: urlToken, error: urlError } = await searchParams;
 
-  // Redirect to validate route when a token is provided in the URL
   if (urlToken) {
     redirect(
       `/api/portal/validate?token=${encodeURIComponent(urlToken)}&slug=${encodeURIComponent(slug)}`,
@@ -36,7 +38,6 @@ export default async function PortalPage({ params, searchParams }: Props) {
     );
   }
 
-  // Read the portal_token cookie set after validation
   const cookieStore = await cookies();
   const portalToken = cookieStore.get("portal_token")?.value;
 
@@ -53,7 +54,6 @@ export default async function PortalPage({ params, searchParams }: Props) {
     );
   }
 
-  // Validate cookie token against DB
   const rows = await db
     .select({ client: clients, workspace: workspaces })
     .from(clients)
@@ -89,7 +89,57 @@ export default async function PortalPage({ params, searchParams }: Props) {
   const clientProjects = await db
     .select()
     .from(projects)
-    .where(and(eq(projects.clientId, client.id), isNull(projects.deletedAt)));
+    .where(
+      and(
+        eq(projects.clientId, client.id),
+        eq(projects.workspaceId, workspace.id),
+        isNull(projects.deletedAt),
+      ),
+    )
+    .orderBy(asc(projects.createdAt));
+
+  const projectIds = clientProjects.map((p) => p.id);
+
+  const [fileList, messageList] =
+    projectIds.length > 0
+      ? await Promise.all([
+          db
+            .select()
+            .from(files)
+            .where(
+              and(
+                inArray(files.projectId, projectIds),
+                isNull(files.deletedAt),
+              ),
+            )
+            .orderBy(asc(files.createdAt)),
+          db
+            .select()
+            .from(messages)
+            .where(
+              and(
+                inArray(messages.projectId, projectIds),
+                isNull(messages.deletedAt),
+              ),
+            )
+            .orderBy(asc(messages.createdAt)),
+        ])
+      : [[], []];
+
+  const filesByProject = fileList.reduce<Record<string, typeof fileList>>(
+    (acc, f) => {
+      (acc[f.projectId] ??= []).push(f);
+      return acc;
+    },
+    {},
+  );
+
+  const messagesByProject = messageList.reduce<
+    Record<string, typeof messageList>
+  >((acc, m) => {
+    (acc[m.projectId] ??= []).push(m);
+    return acc;
+  }, {});
 
   return (
     <div className="max-w-2xl mx-auto p-8 space-y-8">
@@ -101,22 +151,77 @@ export default async function PortalPage({ params, searchParams }: Props) {
       </div>
 
       <div>
-        <h2 className="text-lg font-semibold mb-3">Vos projets</h2>
+        <h2 className="text-lg font-semibold mb-4">Vos projets</h2>
+
         {clientProjects.length === 0 ? (
-          <p className="text-gray-500 text-sm">Aucun projet pour le moment.</p>
+          <p className="text-gray-500 text-sm">
+            Aucun projet pour le moment. Votre prestataire en créera bientôt.
+          </p>
         ) : (
-          <ul className="divide-y divide-gray-100 border border-gray-200 rounded-lg">
-            {clientProjects.map((project) => (
-              <li key={project.id} className="px-4 py-3">
-                <span className="font-medium">{project.name}</span>
-                {project.description && (
-                  <p className="text-gray-500 text-sm mt-0.5">
-                    {project.description}
-                  </p>
-                )}
-              </li>
-            ))}
-          </ul>
+          <div className="space-y-4">
+            {clientProjects.map((project) => {
+              const statusLabel =
+                STATUS_LABELS[project.status] ?? STATUS_LABELS.todo;
+              const statusClass =
+                STATUS_CLASSES[project.status] ?? STATUS_CLASSES.todo;
+
+              const projectFiles = (filesByProject[project.id] ?? []).map(
+                (f) => ({
+                  id: f.id,
+                  name: f.name,
+                  sizeBytes: f.sizeBytes,
+                  uploadedBy: f.uploadedBy,
+                  createdAt: f.createdAt.toISOString(),
+                }),
+              );
+
+              const projectMessages = (messagesByProject[project.id] ?? []).map(
+                (m) => ({
+                  id: m.id,
+                  content: m.content,
+                  authorType: m.authorType,
+                  createdAt: m.createdAt.toISOString(),
+                }),
+              );
+
+              return (
+                <div
+                  key={project.id}
+                  className="border border-gray-200 rounded-lg px-4 py-4"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h3 className="font-medium text-gray-900">
+                        {project.name}
+                      </h3>
+                      {project.description && (
+                        <p className="text-gray-500 text-sm mt-0.5">
+                          {project.description}
+                        </p>
+                      )}
+                    </div>
+                    <span
+                      className={`text-xs font-medium rounded-full px-3 py-1 shrink-0 ${statusClass}`}
+                    >
+                      {statusLabel}
+                    </span>
+                  </div>
+
+                  <FileUpload
+                    projectId={project.id}
+                    initialFiles={projectFiles}
+                    viewerType="client"
+                  />
+
+                  <MessageThread
+                    projectId={project.id}
+                    initialMessages={projectMessages}
+                    viewerType="client"
+                  />
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
     </div>
