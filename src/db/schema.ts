@@ -50,6 +50,7 @@ export const clients = pgTable("clients", {
   email: text("email").notNull(),
   inviteToken: text("invite_token").unique(),
   inviteExpiresAt: timestamp("invite_expires_at", { withTimezone: true }),
+  firstAccessedAt: timestamp("first_accessed_at", { withTimezone: true }),
   ...timestamps,
 });
 

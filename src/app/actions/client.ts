@@ -3,6 +3,7 @@
 import { createElement } from "react";
 import { z } from "zod";
 import { and, eq, isNull } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { clients } from "@/db/schema";
 import { resend } from "@/lib/resend";
@@ -91,10 +92,81 @@ export async function inviteClient(
     console.warn("Email non envoyé (Resend):", emailError);
   }
 
+  revalidatePath("/clients");
+
   return {
     error: null,
     success: emailError
       ? `Client ajouté. Email non envoyé (${emailError.message}) — lien : ${portalLink}`
       : `Invitation envoyée à ${parsed.data.clientEmail}`,
+  };
+}
+
+export async function deleteClient(
+  clientId: string,
+): Promise<{ error: string | null }> {
+  const { workspace } = await requireAuth();
+
+  await db
+    .update(clients)
+    .set({ deletedAt: new Date() })
+    .where(
+      and(
+        eq(clients.id, clientId),
+        eq(clients.workspaceId, workspace.id),
+        isNull(clients.deletedAt),
+      ),
+    );
+
+  revalidatePath("/clients");
+  return { error: null };
+}
+
+export async function resendClientInvite(
+  clientId: string,
+): Promise<{ error: string | null; success: string | null }> {
+  const { workspace } = await requireAuth();
+
+  const [client] = await db
+    .select()
+    .from(clients)
+    .where(
+      and(
+        eq(clients.id, clientId),
+        eq(clients.workspaceId, workspace.id),
+        isNull(clients.deletedAt),
+      ),
+    )
+    .limit(1);
+
+  if (!client) return { error: "Client introuvable", success: null };
+
+  const token = crypto.randomUUID();
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+  await db
+    .update(clients)
+    .set({ inviteToken: token, inviteExpiresAt: expiresAt })
+    .where(eq(clients.id, clientId));
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const portalLink = `${appUrl}/portal/${workspace.slug}?token=${token}`;
+
+  const { error: emailError } = await resend.emails.send({
+    from: process.env.RESEND_FROM_EMAIL ?? "onboarding@resend.dev",
+    to: client.email,
+    subject: `Invitation au portail de ${workspace.name}`,
+    react: createElement(InviteEmail, {
+      clientName: client.name,
+      workspaceName: workspace.name,
+      portalLink,
+    }),
+  });
+
+  return {
+    error: null,
+    success: emailError
+      ? `Lien : ${portalLink}`
+      : `Invitation renvoyée à ${client.email}`,
   };
 }

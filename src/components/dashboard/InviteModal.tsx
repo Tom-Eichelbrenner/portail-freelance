@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import { useRouter } from "next/navigation";
 import { X, UserPlus, Check } from "lucide-react";
 import { inviteClient, type InviteState } from "@/app/actions/client";
 
@@ -8,6 +9,7 @@ const initialState: InviteState = { error: null, success: null };
 
 interface Props {
   workspaceId: string;
+  renderTrigger?: (open: () => void) => React.ReactNode;
 }
 
 function ModalContent({
@@ -17,11 +19,17 @@ function ModalContent({
   workspaceId: string;
   onClose: () => void;
 }) {
+  const router = useRouter();
   const [state, formAction, isPending] = useActionState(
     inviteClient,
     initialState,
   );
   const sent = !!state.success;
+
+  function handleDone() {
+    router.refresh();
+    onClose();
+  }
 
   return (
     <div
@@ -161,7 +169,7 @@ function ModalContent({
             </div>
             <div className="mt-5 flex justify-center">
               <button
-                onClick={onClose}
+                onClick={handleDone}
                 className="h-10 cursor-pointer rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-indigo-700"
               >
                 Terminé
@@ -174,18 +182,23 @@ function ModalContent({
   );
 }
 
-export default function InviteModal({ workspaceId }: Props) {
+export default function InviteModal({ workspaceId, renderTrigger }: Props) {
   const [open, setOpen] = useState(false);
+  const handleOpen = () => setOpen(true);
 
   return (
     <>
-      <button
-        onClick={() => setOpen(true)}
-        className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 active:bg-indigo-800"
-      >
-        <UserPlus size={16} strokeWidth={2} />
-        Inviter un client
-      </button>
+      {renderTrigger ? (
+        renderTrigger(handleOpen)
+      ) : (
+        <button
+          onClick={handleOpen}
+          className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 active:bg-indigo-800"
+        >
+          <UserPlus size={16} strokeWidth={2} />
+          Inviter un client
+        </button>
+      )}
 
       {open && (
         <ModalContent

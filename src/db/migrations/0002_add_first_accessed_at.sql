@@ -1,0 +1,1 @@
+ALTER TABLE "clients" ADD COLUMN "first_accessed_at" timestamp with time zone;

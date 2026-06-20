@@ -15,6 +15,13 @@
       "when": 1781958127767,
       "tag": "0001_rainy_giant_man",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1781995951783,
+      "tag": "0002_add_first_accessed_at",
+      "breakpoints": true
     }
   ]
 }

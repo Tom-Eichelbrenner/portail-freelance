@@ -4,6 +4,11 @@ import { and, eq, gt, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { clients, workspaces } from "@/db/schema";
 
+const SESSION_DURATION_DAYS = 30;
+// After the client first accesses the portal, extend their token validity
+// to 1 year so the 7-day invite window no longer locks them out.
+const POST_ACCESS_EXPIRY_DAYS = 365;
+
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
   const token = searchParams.get("token");
@@ -33,6 +38,23 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  const { client } = rows[0];
+
+  // On first access: stamp firstAccessedAt and extend the token expiry
+  // so the client isn't locked out after the initial 7-day invite window.
+  if (!client.firstAccessedAt) {
+    const longExpiry = new Date(
+      Date.now() + POST_ACCESS_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
+    );
+    await db
+      .update(clients)
+      .set({
+        firstAccessedAt: new Date(),
+        inviteExpiresAt: longExpiry,
+      })
+      .where(eq(clients.id, client.id));
+  }
+
   const cookieStore = await cookies();
   const isProduction = process.env.NODE_ENV === "production";
 
@@ -40,7 +62,7 @@ export async function GET(request: NextRequest) {
     httpOnly: true,
     sameSite: "lax",
     secure: isProduction,
-    maxAge: 30 * 24 * 60 * 60,
+    maxAge: SESSION_DURATION_DAYS * 24 * 60 * 60,
     path: "/",
   });
 
