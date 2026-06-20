@@ -1,0 +1,6 @@
+<svg width="132" height="40" viewBox="0 0 132 40" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Livra">
+  <rect width="40" height="40" rx="10" fill="#6366f1"></rect>
+  <path d="M13 11.5C13 10.6716 13.6716 10 14.5 10C15.3284 10 16 10.6716 16 11.5V26H24.5C25.3284 26 26 26.6716 26 27.5C26 28.3284 25.3284 29 24.5 29H14.5C13.6716 29 13 28.3284 13 27.5V11.5Z" fill="white"></path>
+  <circle cx="26.5" cy="13.5" r="2.5" fill="#a5b4fc"></circle>
+  <text x="52" y="27.5" font-family="Inter, system-ui, sans-serif" font-size="23" font-weight="700" letter-spacing="-0.02em" fill="#0f172a">Livra</text>
+</svg>
