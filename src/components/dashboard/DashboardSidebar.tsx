@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Users,
+  FolderOpen,
   Folder,
   ReceiptEuro,
   MessageSquare,
@@ -41,6 +42,7 @@ const NAV_ITEMS = [
     count: null,
   },
   { href: "/clients", icon: Users, label: "Clients", count: null },
+  { href: "/projets", icon: FolderOpen, label: "Projets", count: null },
   { href: "/livrables", icon: Folder, label: "Livrables", count: null },
   { href: "/factures", icon: ReceiptEuro, label: "Factures", count: null },
   {

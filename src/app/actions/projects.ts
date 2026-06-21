@@ -55,6 +55,7 @@ export async function createProject(
   });
 
   revalidatePath("/dashboard");
+  revalidatePath("/projets");
   return { error: null };
 }
 
