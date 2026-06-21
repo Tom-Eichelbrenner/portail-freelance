@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition, useRef } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Search,
@@ -13,8 +14,21 @@ import {
   ChevronDown,
   X,
   FolderOpen,
+  Trash2,
 } from "lucide-react";
-import { createProject } from "@/app/actions/projects";
+import {
+  createProject,
+  updateProjectStatus,
+  deleteProject,
+} from "@/app/actions/projects";
+import {
+  STATUSES,
+  STATUS_LABELS,
+  STATUS_TONE,
+  TONE_STYLE,
+  type Tone,
+} from "@/lib/project-statuses";
+import InlineStatusSelect from "@/components/ui/InlineStatusSelect";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -44,47 +58,6 @@ const AVATAR_PALETTE = [
   "#8b5cf6",
   "#ec4899",
 ];
-
-const STATUS_LABELS: Record<string, string> = {
-  todo: "À démarrer",
-  in_progress: "En cours",
-  delivered: "Livré",
-  approved: "Validé",
-};
-
-type Tone = "neutral" | "primary" | "warning" | "success";
-
-const STATUS_TONE: Record<string, Tone> = {
-  todo: "neutral",
-  in_progress: "primary",
-  delivered: "warning",
-  approved: "success",
-};
-
-const TONE_STYLE: Record<Tone, { bg: string; fg: string; dot: string }> = {
-  neutral: {
-    bg: "var(--slate-100)",
-    fg: "var(--slate-700)",
-    dot: "var(--slate-400)",
-  },
-  primary: {
-    bg: "var(--indigo-50)",
-    fg: "var(--indigo-700)",
-    dot: "var(--indigo-500)",
-  },
-  warning: {
-    bg: "var(--amber-50)",
-    fg: "var(--amber-600)",
-    dot: "var(--amber-500)",
-  },
-  success: {
-    bg: "var(--emerald-50)",
-    fg: "var(--emerald-700)",
-    dot: "var(--emerald-500)",
-  },
-};
-
-const STATUSES = ["todo", "in_progress", "delivered", "approved"] as const;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -458,7 +431,13 @@ function CreateProjectModal({
 
 const TABLE_COLS = "1fr 210px 150px 180px 44px";
 
-function TableRow({ project: p }: { project: ProjectRow }) {
+function TableRow({
+  project: p,
+  onDelete,
+}: {
+  project: ProjectRow;
+  onDelete: (id: string, name: string) => void;
+}) {
   const [hover, setHover] = useState(false);
   const av = getAvatar(p.clientName);
 
@@ -470,7 +449,6 @@ function TableRow({ project: p }: { project: ProjectRow }) {
         alignItems: "center",
         padding: "13px 20px",
         borderTop: "1px solid var(--border-subtle)",
-        cursor: "pointer",
         background: hover ? "var(--surface-sunken)" : "transparent",
         transition: "background 120ms",
       }}
@@ -500,7 +478,8 @@ function TableRow({ project: p }: { project: ProjectRow }) {
         >
           <Folder size={17} strokeWidth={2} />
         </span>
-        <span
+        <Link
+          href={`/projets/${p.id}`}
           style={{
             fontSize: 14,
             fontWeight: 600,
@@ -508,10 +487,12 @@ function TableRow({ project: p }: { project: ProjectRow }) {
             overflow: "hidden",
             textOverflow: "ellipsis",
             minWidth: 0,
+            color: "inherit",
+            textDecoration: "none",
           }}
         >
           {p.name}
-        </span>
+        </Link>
       </div>
 
       <div
@@ -553,7 +534,7 @@ function TableRow({ project: p }: { project: ProjectRow }) {
       </div>
 
       <span>
-        <StatusBadge status={p.status} />
+        <InlineStatusSelect projectId={p.id} status={p.status} />
       </span>
 
       <span
@@ -569,20 +550,36 @@ function TableRow({ project: p }: { project: ProjectRow }) {
         {fmtDate(p.updatedAtISO)}
       </span>
 
-      <span
-        style={{
-          display: "inline-flex",
-          justifyContent: "flex-end",
-          color: "var(--slate-400)",
-        }}
-      >
-        <MoreHorizontal size={18} strokeWidth={2} />
+      <span style={{ display: "flex", justifyContent: "flex-end" }}>
+        <button
+          onClick={() => onDelete(p.id, p.name)}
+          title="Supprimer le projet"
+          style={{
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            padding: "4px 6px",
+            borderRadius: 6,
+            color: hover ? "var(--red-500)" : "var(--slate-400)",
+            display: "flex",
+            alignItems: "center",
+            transition: "color 120ms",
+          }}
+        >
+          <Trash2 size={15} strokeWidth={2} />
+        </button>
       </span>
     </div>
   );
 }
 
-function TableView({ rows }: { rows: ProjectRow[] }) {
+function TableView({
+  rows,
+  onDelete,
+}: {
+  rows: ProjectRow[];
+  onDelete: (id: string, name: string) => void;
+}) {
   return (
     <div
       style={{
@@ -614,7 +611,7 @@ function TableView({ rows }: { rows: ProjectRow[] }) {
       </div>
 
       {rows.map((p) => (
-        <TableRow key={p.id} project={p} />
+        <TableRow key={p.id} project={p} onDelete={onDelete} />
       ))}
 
       {rows.length === 0 && (
@@ -644,7 +641,13 @@ function TableView({ rows }: { rows: ProjectRow[] }) {
 
 // ─── Kanban view ──────────────────────────────────────────────────────────────
 
-function KanbanCard({ project: p }: { project: ProjectRow }) {
+function KanbanCard({
+  project: p,
+  onDelete,
+}: {
+  project: ProjectRow;
+  onDelete: (id: string, name: string) => void;
+}) {
   const [hover, setHover] = useState(false);
   const av = getAvatar(p.clientName);
 
@@ -674,12 +677,38 @@ function KanbanCard({ project: p }: { project: ProjectRow }) {
           gap: 8,
         }}
       >
-        <div style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.35 }}>
+        <Link
+          href={`/projets/${p.id}`}
+          style={{
+            fontSize: 14,
+            fontWeight: 600,
+            lineHeight: 1.35,
+            color: "inherit",
+            textDecoration: "none",
+          }}
+        >
           {p.name}
-        </div>
-        <span style={{ color: "var(--slate-400)", flexShrink: 0 }}>
-          <MoreHorizontal size={17} strokeWidth={2} />
-        </span>
+        </Link>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete(p.id, p.name);
+          }}
+          title="Supprimer le projet"
+          style={{
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            padding: "3px 5px",
+            borderRadius: 5,
+            color: "var(--slate-400)",
+            display: "flex",
+            alignItems: "center",
+            flexShrink: 0,
+          }}
+        >
+          <Trash2 size={15} strokeWidth={2} />
+        </button>
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -726,13 +755,19 @@ function KanbanCard({ project: p }: { project: ProjectRow }) {
           <Calendar size={13} strokeWidth={2} />
           {fmtDate(p.updatedAtISO)}
         </span>
-        <StatusBadge status={p.status} size="sm" />
+        <InlineStatusSelect projectId={p.id} status={p.status} />
       </div>
     </div>
   );
 }
 
-function KanbanView({ rows }: { rows: ProjectRow[] }) {
+function KanbanView({
+  rows,
+  onDelete,
+}: {
+  rows: ProjectRow[];
+  onDelete: (id: string, name: string) => void;
+}) {
   const columns = STATUSES.map((status) => {
     const tone = STATUS_TONE[status] ?? "neutral";
     const items = rows.filter((p) => p.status === status);
@@ -793,7 +828,7 @@ function KanbanView({ rows }: { rows: ProjectRow[] }) {
           </div>
 
           {col.items.map((p) => (
-            <KanbanCard key={p.id} project={p} />
+            <KanbanCard key={p.id} project={p} onDelete={onDelete} />
           ))}
 
           {col.items.length === 0 && (
@@ -819,20 +854,34 @@ function KanbanView({ rows }: { rows: ProjectRow[] }) {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function ProjectsView({ rows: initialRows, clients }: Props) {
+  const router = useRouter();
+  const [, startTransition] = useTransition();
   const [view, setView] = useState<"table" | "kanban">("table");
   const [clientFilter, setClientFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [query, setQuery] = useState("");
   const [showModal, setShowModal] = useState(false);
+  const [deleted, setDeleted] = useState<Set<string>>(new Set());
+
+  function handleDelete(id: string, name: string) {
+    if (!window.confirm(`Supprimer le projet "${name}" ?`)) return;
+    setDeleted((prev) => new Set([...prev, id]));
+    startTransition(async () => {
+      await deleteProject(id);
+      router.refresh();
+    });
+  }
+
+  const rows = initialRows.filter((r) => !deleted.has(r.id));
 
   const uniqueClients = Array.from(
-    new Set(initialRows.map((r) => r.clientName)),
+    new Set(rows.map((r) => r.clientName)),
   ).sort();
 
   const byClient =
     clientFilter === "all"
-      ? initialRows
-      : initialRows.filter((p) => p.clientName === clientFilter);
+      ? rows
+      : rows.filter((p) => p.clientName === clientFilter);
 
   const filtered = byClient.filter((p) => {
     const matchStatus = statusFilter === "all" || p.status === statusFilter;
@@ -854,8 +903,8 @@ export default function ProjectsView({ rows: initialRows, clients }: Props) {
     ...STATUSES.map((s) => ({ key: s, label: STATUS_LABELS[s] ?? s })),
   ];
 
-  const totalProjects = initialRows.length;
-  const totalClients = new Set(initialRows.map((p) => p.clientId)).size;
+  const totalProjects = rows.length;
+  const totalClients = new Set(rows.map((p) => p.clientId)).size;
 
   return (
     <>
@@ -1154,9 +1203,9 @@ export default function ProjectsView({ rows: initialRows, clients }: Props) {
           }}
         >
           {view === "table" ? (
-            <TableView rows={filtered} />
+            <TableView rows={filtered} onDelete={handleDelete} />
           ) : (
-            <KanbanView rows={filtered} />
+            <KanbanView rows={filtered} onDelete={handleDelete} />
           )}
         </div>
       </div>

@@ -6,7 +6,6 @@ import {
   LayoutDashboard,
   Users,
   FolderOpen,
-  Folder,
   Files,
   ReceiptEuro,
   MessageSquare,
@@ -45,7 +44,6 @@ const NAV_ITEMS = [
   { href: "/clients", icon: Users, label: "Clients", count: null },
   { href: "/projets", icon: FolderOpen, label: "Projets", count: null },
   { href: "/fichiers", icon: Files, label: "Fichiers", count: null },
-  { href: "/livrables", icon: Folder, label: "Livrables", count: null },
   { href: "/factures", icon: ReceiptEuro, label: "Factures", count: null },
   {
     href: "/messages",

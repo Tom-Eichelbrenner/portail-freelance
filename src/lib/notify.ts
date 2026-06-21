@@ -10,14 +10,15 @@ interface SendNotificationOptions {
   react: ReactElement;
   type: string;
   payload: Record<string, unknown>;
+  workspaceId?: string;
 }
 
 export async function sendNotification(options: SendNotificationOptions) {
-  const { to, subject, react, type, payload } = options;
+  const { to, subject, react, type, payload, workspaceId } = options;
 
   const [queued] = await db
     .insert(notificationQueue)
-    .values({ type, payload })
+    .values({ type, payload, workspaceId: workspaceId ?? null })
     .returning({ id: notificationQueue.id });
 
   const fromEmail = process.env.RESEND_FROM_EMAIL ?? "onboarding@resend.dev";

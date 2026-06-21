@@ -106,6 +106,7 @@ export async function updateProjectStatus(
       portalLink: `${appUrl}/portal/${workspace.slug}`,
     }),
     type: "status_change",
+    workspaceId: workspace.id,
     payload: {
       projectId,
       projectName: project.name,

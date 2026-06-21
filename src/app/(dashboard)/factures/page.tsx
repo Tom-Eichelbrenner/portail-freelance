@@ -18,31 +18,39 @@ function initials(name: string): string {
 const LATE_THRESHOLD_MS = 30 * 24 * 60 * 60 * 1000;
 
 export default async function FacturesPage() {
-  const { workspace } = await requireAuth();
+  const { user, workspace } = await requireAuth();
 
-  const rows = await db
-    .select({
-      id: invoices.id,
-      amountCents: invoices.amount,
-      status: invoices.status,
-      createdAt: invoices.createdAt,
-      clientName: clients.name,
-      projectName: projects.name,
-    })
-    .from(invoices)
-    .innerJoin(projects, eq(projects.id, invoices.projectId))
-    .innerJoin(clients, eq(clients.id, invoices.clientId))
-    .where(
-      and(
-        eq(invoices.workspaceId, workspace.id),
-        isNull(invoices.deletedAt),
-        isNull(projects.deletedAt),
-        isNull(clients.deletedAt),
-      ),
-    )
-    .orderBy(asc(invoices.createdAt));
+  const [rows, projectList] = await Promise.all([
+    db
+      .select({
+        id: invoices.id,
+        amountCents: invoices.amount,
+        status: invoices.status,
+        createdAt: invoices.createdAt,
+        clientName: clients.name,
+        projectName: projects.name,
+      })
+      .from(invoices)
+      .innerJoin(projects, eq(projects.id, invoices.projectId))
+      .innerJoin(clients, eq(clients.id, invoices.clientId))
+      .where(
+        and(
+          eq(invoices.workspaceId, workspace.id),
+          isNull(invoices.deletedAt),
+          isNull(projects.deletedAt),
+          isNull(clients.deletedAt),
+        ),
+      )
+      .orderBy(asc(invoices.createdAt)),
+    db
+      .select({ id: projects.id, name: projects.name })
+      .from(projects)
+      .where(
+        and(eq(projects.workspaceId, workspace.id), isNull(projects.deletedAt)),
+      )
+      .orderBy(asc(projects.name)),
+  ]);
 
-  // Build per-year counters to generate FAC-YYYY-NNN numbers
   const yearCounters = new Map<number, number>();
 
   const invoiceRows: InvoiceRow[] = rows.map((r) => {
@@ -66,9 +74,11 @@ export default async function FacturesPage() {
     };
   });
 
+  const isPro = user.subscriptionStatus === "active" && !!user.subscriptionPlan;
+
   return (
     <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
-      <InvoicesTable rows={invoiceRows} />
+      <InvoicesTable rows={invoiceRows} projects={projectList} isPro={isPro} />
     </main>
   );
 }

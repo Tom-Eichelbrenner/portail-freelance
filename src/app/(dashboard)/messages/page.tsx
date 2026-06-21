@@ -75,10 +75,11 @@ export default async function MessagesPage() {
     msgByProject.get(msg.projectId)!.push(msg);
   }
 
-  // Build conversations sorted by latest message time (then by project updatedAt)
+  // Only show projects that have at least one message
   const conversations: ConversationItem[] = projectList
+    .filter((p) => msgByProject.has(p.id))
     .map((p, i) => {
-      const msgs = msgByProject.get(p.id) ?? [];
+      const msgs = msgByProject.get(p.id)!;
       const last = msgs[msgs.length - 1];
       const palette = AVATAR_PALETTE[i % AVATAR_PALETTE.length];
       return {
@@ -88,12 +89,10 @@ export default async function MessagesPage() {
         clientInitials: initials(p.clientName) || "?",
         avBg: palette.bg,
         avFg: palette.fg,
-        lastMessage: last?.content ?? "",
-        lastMessageFrom: (last?.authorType ?? "freelance") as
-          | "freelance"
-          | "client",
-        lastMessageTime: last ? fmtTime(last.createdAt) : "",
-        _sortKey: last?.createdAt.getTime() ?? p.updatedAt.getTime(),
+        lastMessage: last.content,
+        lastMessageFrom: last.authorType as "freelance" | "client",
+        lastMessageTime: fmtTime(last.createdAt),
+        _sortKey: last.createdAt.getTime(),
       };
     })
     .sort((a, b) => b._sortKey - a._sortKey)

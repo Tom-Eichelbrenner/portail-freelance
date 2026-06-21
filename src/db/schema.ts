@@ -123,6 +123,7 @@ export const invoices = pgTable("invoices", {
 
 export const notificationQueue = pgTable("notification_queue", {
   id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id").references(() => workspaces.id),
   type: text("type").notNull(),
   payload: jsonb("payload").notNull(),
   sentAt: timestamp("sent_at", { withTimezone: true }),

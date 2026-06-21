@@ -1,9 +1,14 @@
 "use client";
 
 import { useActionState, useState, useRef, useTransition } from "react";
-import { Check, Calendar, Lock, ChevronRight } from "lucide-react";
+import { Check, Calendar, Lock } from "lucide-react";
 import Link from "next/link";
-import { saveSettings, deleteAccount } from "@/app/actions/settings";
+import {
+  saveSettings,
+  deleteAccount,
+  changePassword,
+} from "@/app/actions/settings";
+import { createBillingPortalSession } from "@/app/actions/stripe";
 
 const ACCENTS = [
   { hex: "#6366f1", name: "Indigo" },
@@ -31,14 +36,13 @@ const PLAN_DATA: Record<
 > = {
   pro: {
     name: "Pro",
-    price: "24 €",
-    cycle: "par mois, facturé annuellement",
-    renew: "12 juillet 2026",
+    price: "39 €",
+    cycle: "par mois",
+    renew: null,
     feats: [
       "Clients illimités",
-      "100 Go de stockage",
-      "Relances automatiques",
-      "Signature électronique",
+      "20 Go de stockage",
+      "Facturation client intégrée",
     ],
     primaryCta: "Gérer l'abonnement",
     badgeBg: "var(--emerald-50)",
@@ -50,7 +54,7 @@ const PLAN_DATA: Record<
     name: "Team",
     price: "49 €",
     cycle: "par utilisateur, facturé annuellement",
-    renew: "12 juillet 2026",
+    renew: null,
     feats: [
       "Tout le plan Pro",
       "Espaces partagés",
@@ -158,6 +162,8 @@ export interface ReglagesProps {
   workspaceSlug: string;
   accentColor: string;
   subscriptionPlan: string | null;
+  subscriptionStatus: string | null;
+  renewalDate: string | null;
 }
 
 export default function ReglagesView({
@@ -167,6 +173,8 @@ export default function ReglagesView({
   workspaceSlug,
   accentColor: initialAccentColor,
   subscriptionPlan,
+  subscriptionStatus,
+  renewalDate,
 }: ReglagesProps) {
   const [wsName, setWsName] = useState(initialWorkspaceName);
   const [accent, setAccent] = useState(initialAccentColor);
@@ -182,6 +190,11 @@ export default function ReglagesView({
   const [dangerOpen, setDangerOpen] = useState(false);
   const [confirmText, setConfirmText] = useState("");
   const [saved, setSaved] = useState(false);
+  const [pwOpen, setPwOpen] = useState(false);
+  const [pwState, pwFormAction, pwPending] = useActionState(changePassword, {
+    error: null,
+    success: false,
+  });
 
   const [state, formAction] = useActionState(saveSettings, {
     error: null,
@@ -213,7 +226,9 @@ export default function ReglagesView({
     setEmail(userEmail);
   }
 
-  const plan = PLAN_DATA[subscriptionPlan ?? ""] ?? FREE_PLAN;
+  const isPro =
+    subscriptionStatus === "active" && !!PLAN_DATA[subscriptionPlan ?? ""];
+  const plan = isPro ? (PLAN_DATA[subscriptionPlan!] ?? FREE_PLAN) : FREE_PLAN;
   const wsInitial = (wsName.trim().charAt(0) || "L").toUpperCase();
   const canDelete =
     confirmText.trim() !== "" && confirmText.trim() === wsName.trim();
@@ -692,31 +707,104 @@ export default function ReglagesView({
                 {/* Password */}
                 <div
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 16,
                     borderTop: "1px solid var(--border-subtle)",
                     paddingTop: 18,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 14,
                   }}
                 >
-                  <div>
-                    <div style={{ fontSize: 14, fontWeight: 600 }}>
-                      Mot de passe
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 16,
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 600 }}>
+                        Mot de passe
+                      </div>
+                      {pwState.success && (
+                        <div
+                          style={{
+                            fontSize: 13,
+                            color: "var(--color-success)",
+                            marginTop: 2,
+                          }}
+                        >
+                          Mot de passe modifié avec succès.
+                        </div>
+                      )}
                     </div>
-                    <div
+                    {!pwOpen && (
+                      <button
+                        type="button"
+                        onClick={() => setPwOpen(true)}
+                        style={btnSecondarySmStyle}
+                      >
+                        Changer le mot de passe
+                      </button>
+                    )}
+                  </div>
+                  {pwOpen && (
+                    <form
+                      action={pwFormAction}
                       style={{
-                        fontSize: 13,
-                        color: "var(--text-secondary)",
-                        marginTop: 2,
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 10,
+                        maxWidth: 320,
                       }}
                     >
-                      Modifié il y a 3 mois.
-                    </div>
-                  </div>
-                  <button type="button" style={btnSecondarySmStyle}>
-                    Changer le mot de passe
-                  </button>
+                      {pwState.error && (
+                        <p
+                          style={{
+                            margin: 0,
+                            padding: "8px 12px",
+                            background: "var(--red-50)",
+                            border: "1px solid #fecaca",
+                            borderRadius: 8,
+                            fontSize: 13,
+                            color: "#dc2626",
+                          }}
+                        >
+                          {pwState.error}
+                        </p>
+                      )}
+                      <input
+                        name="newPassword"
+                        type="password"
+                        required
+                        minLength={8}
+                        placeholder="Nouveau mot de passe (8 caractères min.)"
+                        style={inputStyle}
+                      />
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button
+                          type="submit"
+                          disabled={pwPending}
+                          style={{
+                            ...btnSecondarySmStyle,
+                            background: "var(--indigo-500)",
+                            color: "#fff",
+                            border: "none",
+                            opacity: pwPending ? 0.7 : 1,
+                          }}
+                        >
+                          {pwPending ? "Enregistrement…" : "Enregistrer"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPwOpen(false)}
+                          style={btnGhostSmStyle}
+                        >
+                          Annuler
+                        </button>
+                      </div>
+                    </form>
+                  )}
                 </div>
               </div>
             </section>
@@ -845,7 +933,7 @@ export default function ReglagesView({
                         </span>{" "}
                         {plan.cycle}
                       </div>
-                      {plan.renew && (
+                      {renewalDate && (
                         <div
                           style={{
                             marginTop: 10,
@@ -860,7 +948,7 @@ export default function ReglagesView({
                             size={15}
                             style={{ color: "var(--slate-400)" }}
                           />
-                          <span>Prochain renouvellement le {plan.renew}.</span>
+                          <span>Prochain renouvellement le {renewalDate}.</span>
                         </div>
                       )}
                     </div>
@@ -928,9 +1016,25 @@ export default function ReglagesView({
                     >
                       Voir les factures
                     </Link>
-                    <button type="button" style={btnPrimaryStyle}>
-                      {plan.primaryCta}
-                    </button>
+                    {isPro ? (
+                      <form action={createBillingPortalSession}>
+                        <button type="submit" style={btnPrimaryStyle}>
+                          {plan.primaryCta}
+                        </button>
+                      </form>
+                    ) : (
+                      <Link
+                        href="/pricing"
+                        style={{
+                          ...btnPrimaryStyle,
+                          textDecoration: "none",
+                          display: "inline-flex",
+                          alignItems: "center",
+                        }}
+                      >
+                        {plan.primaryCta}
+                      </Link>
+                    )}
                   </div>
                 </div>
               </div>

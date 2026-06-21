@@ -63,6 +63,7 @@ export async function postMessage(
         link: `${appUrl}/portal/${workspace.slug}`,
       }),
       type: "message",
+      workspaceId: workspace.id,
       payload: { projectId, authorType: "freelance", clientId: client.id },
     });
 
@@ -134,6 +135,7 @@ export async function postMessage(
         link: `${appUrl}/dashboard`,
       }),
       type: "message",
+      workspaceId: workspace.id,
       payload: { projectId, authorType: "client", clientId: client.id },
     });
   }

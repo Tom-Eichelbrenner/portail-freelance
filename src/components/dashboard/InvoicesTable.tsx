@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useActionState, useEffect } from "react";
 import {
   Search,
   Plus,
@@ -9,7 +9,11 @@ import {
   AlertCircle,
   ReceiptEuro,
   FileSearch,
+  X,
 } from "lucide-react";
+import { createInvoice, type InvoiceState } from "@/app/actions/stripe";
+
+const initialInvoiceState: InvoiceState = { error: null, success: null };
 
 export type InvoiceRow = {
   id: string;
@@ -174,13 +178,317 @@ function SumCard({
   );
 }
 
-interface Props {
-  rows: InvoiceRow[];
+type ProjectOption = { id: string; name: string };
+
+function CreateInvoiceModal({
+  projects,
+  onClose,
+}: {
+  projects: ProjectOption[];
+  onClose: () => void;
+}) {
+  const [state, formAction, isPending] = useActionState(
+    createInvoice,
+    initialInvoiceState,
+  );
+
+  useEffect(() => {
+    if (state.success) {
+      const t = setTimeout(onClose, 1200);
+      return () => clearTimeout(t);
+    }
+  }, [state.success, onClose]);
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 50,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 24,
+        background: "rgba(15,23,42,0.32)",
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          width: 440,
+          maxWidth: "100%",
+          borderRadius: 16,
+          border: "1px solid var(--border-default)",
+          background: "var(--surface-card)",
+          boxShadow: "var(--shadow-lg)",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            padding: "22px 24px 12px",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 10,
+                background: "var(--indigo-50)",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              <ReceiptEuro
+                size={20}
+                strokeWidth={2}
+                style={{ color: "var(--indigo-600)" }}
+              />
+            </span>
+            <div>
+              <div
+                style={{
+                  fontSize: 15,
+                  fontWeight: 700,
+                  letterSpacing: "-0.01em",
+                  color: "var(--text-primary)",
+                }}
+              >
+                Nouvelle facture
+              </div>
+              <div
+                style={{
+                  fontSize: 13,
+                  color: "var(--text-secondary)",
+                  marginTop: 1,
+                }}
+              >
+                Créez et envoyez une facture par email.
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              appearance: "none",
+              border: "none",
+              background: "none",
+              cursor: "pointer",
+              color: "var(--slate-400)",
+              display: "inline-flex",
+              padding: 4,
+              marginTop: 2,
+            }}
+          >
+            <X size={18} strokeWidth={2} />
+          </button>
+        </div>
+
+        <form action={formAction}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 14,
+              padding: "8px 24px",
+            }}
+          >
+            {state.error && (
+              <p
+                style={{
+                  margin: 0,
+                  padding: "9px 12px",
+                  background: "var(--red-50)",
+                  border: "1px solid #fecaca",
+                  borderRadius: 8,
+                  fontSize: 13.5,
+                  color: "#dc2626",
+                }}
+              >
+                {state.error}
+              </p>
+            )}
+            {state.success && (
+              <p
+                style={{
+                  margin: 0,
+                  padding: "9px 12px",
+                  background: "var(--emerald-50)",
+                  border: "1px solid #6ee7b7",
+                  borderRadius: 8,
+                  fontSize: 13.5,
+                  color: "var(--emerald-700)",
+                }}
+              >
+                {state.success}
+              </p>
+            )}
+
+            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <span
+                style={{
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: "var(--text-primary)",
+                }}
+              >
+                Projet
+              </span>
+              <select
+                name="projectId"
+                required
+                style={{
+                  width: "100%",
+                  height: 40,
+                  padding: "0 12px",
+                  borderRadius: 8,
+                  border: "1px solid var(--border-default)",
+                  background: "var(--surface-card)",
+                  fontSize: 14,
+                  fontFamily: "var(--font-sans)",
+                  color: "var(--text-primary)",
+                  outline: "none",
+                  cursor: "pointer",
+                }}
+              >
+                <option value="">Sélectionner un projet</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <span
+                style={{
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: "var(--text-primary)",
+                }}
+              >
+                Montant (€)
+              </span>
+              <input
+                name="amount"
+                type="number"
+                min={1}
+                step={1}
+                required
+                placeholder="1500"
+                style={{
+                  height: 40,
+                  padding: "0 12px",
+                  borderRadius: 8,
+                  border: "1px solid var(--border-default)",
+                  background: "var(--surface-card)",
+                  fontSize: 14,
+                  fontFamily: "var(--font-sans)",
+                  color: "var(--text-primary)",
+                  outline: "none",
+                }}
+              />
+            </label>
+
+            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <span
+                style={{
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: "var(--text-primary)",
+                }}
+              >
+                Description
+              </span>
+              <input
+                name="description"
+                type="text"
+                required
+                placeholder="Développement site vitrine — Juin 2026"
+                style={{
+                  height: 40,
+                  padding: "0 12px",
+                  borderRadius: 8,
+                  border: "1px solid var(--border-default)",
+                  background: "var(--surface-card)",
+                  fontSize: 14,
+                  fontFamily: "var(--font-sans)",
+                  color: "var(--text-primary)",
+                  outline: "none",
+                }}
+              />
+            </label>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              gap: 10,
+              padding: "16px 24px 22px",
+            }}
+          >
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                height: 40,
+                padding: "0 16px",
+                borderRadius: 8,
+                border: "1px solid var(--border-default)",
+                background: "var(--surface-card)",
+                fontSize: 14,
+                fontWeight: 600,
+                color: "var(--text-secondary)",
+                cursor: "pointer",
+                fontFamily: "var(--font-sans)",
+              }}
+            >
+              Annuler
+            </button>
+            <button
+              type="submit"
+              disabled={isPending || projects.length === 0}
+              style={{
+                height: 40,
+                padding: "0 16px",
+                borderRadius: 8,
+                border: "none",
+                background: "var(--indigo-600)",
+                color: "#fff",
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: isPending ? "not-allowed" : "pointer",
+                opacity: isPending || projects.length === 0 ? 0.5 : 1,
+                fontFamily: "var(--font-sans)",
+              }}
+            >
+              {isPending ? "Envoi…" : "Créer et envoyer"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
 }
 
-export default function InvoicesTable({ rows }: Props) {
+interface Props {
+  rows: InvoiceRow[];
+  projects: ProjectOption[];
+  isPro: boolean;
+}
+
+export default function InvoicesTable({ rows, projects, isPro }: Props) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<FilterKey>("toutes");
+  const [showModal, setShowModal] = useState(false);
 
   const q = query.trim().toLowerCase();
 
@@ -299,8 +607,9 @@ export default function InvoicesTable({ rows }: Props) {
             />
           </div>
           <button
-            disabled
-            title="Bientôt disponible"
+            onClick={() => setShowModal(true)}
+            disabled={!isPro}
+            title={isPro ? undefined : "Fonctionnalité réservée au plan Pro"}
             style={{
               display: "inline-flex",
               alignItems: "center",
@@ -314,8 +623,8 @@ export default function InvoicesTable({ rows }: Props) {
               fontFamily: "var(--font-sans)",
               fontSize: 14,
               fontWeight: 600,
-              cursor: "not-allowed",
-              opacity: 0.5,
+              cursor: isPro ? "pointer" : "not-allowed",
+              opacity: isPro ? 1 : 0.5,
               boxShadow: "var(--shadow-xs)",
             }}
           >
@@ -597,6 +906,13 @@ export default function InvoicesTable({ rows }: Props) {
           </div>
         </div>
       </div>
+
+      {showModal && (
+        <CreateInvoiceModal
+          projects={projects}
+          onClose={() => setShowModal(false)}
+        />
+      )}
     </>
   );
 }
