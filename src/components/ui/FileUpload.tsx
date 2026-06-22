@@ -1,10 +1,21 @@
 "use client";
 
 import { useState, useRef } from "react";
+import {
+  Folder,
+  Upload,
+  UploadCloud,
+  FileText,
+  FileArchive,
+  Image,
+  File,
+  Download,
+} from "lucide-react";
 
 interface UploadedFile {
   id: string;
   name: string;
+  mimeType: string;
   sizeBytes: number;
   uploadedBy: string;
   createdAt: string;
@@ -23,6 +34,26 @@ function formatBytes(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
 }
 
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleDateString("fr-FR", {
+    day: "numeric",
+    month: "short",
+  });
+}
+
+function FileIcon({ mimeType }: { mimeType: string }) {
+  const Icon = mimeType.startsWith("image/")
+    ? Image
+    : mimeType === "application/pdf" || mimeType.includes("text")
+      ? FileText
+      : mimeType.includes("zip") ||
+          mimeType.includes("tar") ||
+          mimeType.includes("rar")
+        ? FileArchive
+        : File;
+  return <Icon size={17} strokeWidth={1.8} color="var(--indigo-600)" />;
+}
+
 export default function FileUpload({
   projectId,
   initialFiles,
@@ -31,6 +62,7 @@ export default function FileUpload({
   const [fileList, setFileList] = useState(initialFiles);
   const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   async function handleFile(file: File) {
@@ -39,9 +71,7 @@ export default function FileUpload({
       setError("Fichier trop volumineux (max 50 Mo)");
       return;
     }
-
     setProgress(0);
-
     try {
       const presignRes = await fetch("/api/uploads/presign", {
         method: "POST",
@@ -53,16 +83,13 @@ export default function FileUpload({
           sizeBytes: file.size,
         }),
       });
-
       if (!presignRes.ok) {
         const err = await presignRes.json();
         setError(err.error ?? "Erreur lors de la préparation de l'upload");
         setProgress(null);
         return;
       }
-
       const { uploadUrl, fileId } = await presignRes.json();
-
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.upload.onprogress = (e) => {
@@ -81,12 +108,12 @@ export default function FileUpload({
         );
         xhr.send(file);
       });
-
       setFileList((prev) => [
         ...prev,
         {
           id: fileId,
           name: file.name,
+          mimeType: file.type || "application/octet-stream",
           sizeBytes: file.size,
           uploadedBy: viewerType,
           createdAt: new Date().toISOString(),
@@ -96,6 +123,7 @@ export default function FileUpload({
       setError(err instanceof Error ? err.message : "Erreur lors de l'upload");
     } finally {
       setProgress(null);
+      setDragOver(false);
     }
   }
 
@@ -107,78 +135,239 @@ export default function FileUpload({
 
   function handleDrop(e: React.DragEvent) {
     e.preventDefault();
+    setDragOver(false);
     const file = e.dataTransfer.files[0];
     if (file) handleFile(file);
   }
 
-  const uploaderLabel = (uploadedBy: string) => {
-    if (uploadedBy === viewerType) return "Vous";
-    return viewerType === "freelance" ? "Client" : "Votre prestataire";
-  };
-
   return (
-    <div className="mt-3">
-      <p className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">
-        Fichiers
-      </p>
-
+    <section
+      style={{
+        background: "var(--surface-card)",
+        border: "1px solid var(--border-default)",
+        borderRadius: "var(--radius-lg)",
+        boxShadow: "var(--shadow-sm)",
+        overflow: "hidden",
+      }}
+    >
+      {/* Card header */}
       <div
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={handleDrop}
-        onClick={() => inputRef.current?.click()}
-        className="border-2 border-dashed border-gray-200 rounded-lg p-3 text-center cursor-pointer hover:border-indigo-300 transition-colors"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "16px 20px",
+          borderBottom: "1px solid var(--border-subtle)",
+        }}
       >
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <Folder size={18} strokeWidth={1.8} color="var(--indigo-500)" />
+          <span style={{ fontSize: 15, fontWeight: 600 }}>Fichiers</span>
+          <span
+            style={{
+              fontSize: 12,
+              fontWeight: 600,
+              color: "var(--text-tertiary)",
+              background: "var(--surface-sunken)",
+              padding: "2px 9px",
+              borderRadius: 9999,
+            }}
+          >
+            {fileList.length}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            height: 32,
+            padding: "0 12px",
+            fontSize: 13,
+            fontWeight: 600,
+            color: "var(--text-primary)",
+            background: "var(--surface-card)",
+            border: "1px solid var(--border-default)",
+            borderRadius: "var(--radius-md)",
+            cursor: "pointer",
+          }}
+        >
+          <Upload size={15} strokeWidth={2} />
+          Importer
+        </button>
         <input
           ref={inputRef}
           type="file"
-          className="hidden"
+          style={{ display: "none" }}
           onChange={handleInputChange}
         />
-        <p className="text-xs text-gray-400">
-          {progress !== null
-            ? `Upload en cours… ${progress}%`
-            : "Cliquez ou déposez un fichier (max 50 Mo)"}
-        </p>
-        {progress !== null && (
-          <div className="mt-2 bg-gray-100 rounded-full h-1">
-            <div
-              className="bg-indigo-500 h-1 rounded-full transition-all"
-              style={{ width: `${progress}%` }}
-            />
+      </div>
+
+      {/* Body */}
+      <div style={{ padding: "16px 20px" }}>
+        {/* Drop zone */}
+        <div
+          onClick={() => inputRef.current?.click()}
+          onDrop={handleDrop}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragOver(true);
+          }}
+          onDragLeave={() => setDragOver(false)}
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            textAlign: "center",
+            padding: "26px 20px",
+            borderRadius: "var(--radius-md)",
+            cursor: "pointer",
+            border: `1.5px dashed ${dragOver ? "var(--indigo-400)" : "var(--border-strong)"}`,
+            background: dragOver ? "var(--indigo-50)" : "var(--surface-sunken)",
+            transition: "all 0.15s ease-out",
+          }}
+        >
+          <UploadCloud size={26} strokeWidth={1.6} color="var(--indigo-500)" />
+          {progress !== null ? (
+            <>
+              <div style={{ fontSize: 14, fontWeight: 600, marginTop: 10 }}>
+                Upload en cours… {progress}%
+              </div>
+              <div
+                style={{
+                  marginTop: 8,
+                  width: 160,
+                  height: 4,
+                  borderRadius: 9999,
+                  background: "var(--border-default)",
+                }}
+              >
+                <div
+                  style={{
+                    height: 4,
+                    borderRadius: 9999,
+                    background: "var(--indigo-500)",
+                    width: `${progress}%`,
+                    transition: "width 0.2s",
+                  }}
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ fontSize: 14, fontWeight: 600, marginTop: 10 }}>
+                Glissez vos fichiers ici
+              </div>
+              <div
+                style={{
+                  fontSize: 13,
+                  color: "var(--text-secondary)",
+                  marginTop: 3,
+                }}
+              >
+                ou{" "}
+                <span style={{ color: "var(--text-link)", fontWeight: 600 }}>
+                  parcourir
+                </span>{" "}
+                depuis votre ordinateur
+              </div>
+            </>
+          )}
+        </div>
+
+        {error && (
+          <p
+            style={{ fontSize: 13, color: "var(--red-600)", margin: "8px 0 0" }}
+          >
+            {error}
+          </p>
+        )}
+
+        {/* File list */}
+        {fileList.length > 0 && (
+          <div
+            style={{ marginTop: 14, display: "flex", flexDirection: "column" }}
+          >
+            {fileList.map((f) => (
+              <div
+                key={f.id}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 96px 36px",
+                  alignItems: "center",
+                  gap: 12,
+                  padding: "11px 4px",
+                  borderBottom: "1px solid var(--border-subtle)",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    minWidth: 0,
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: "var(--radius-md)",
+                      background: "var(--indigo-50)",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <FileIcon mimeType={f.mimeType} />
+                  </span>
+                  <div style={{ minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 500,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {f.name}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: "var(--text-tertiary)",
+                        fontFamily: "var(--font-mono)",
+                      }}
+                    >
+                      {formatBytes(f.sizeBytes)}
+                    </div>
+                  </div>
+                </div>
+                <span style={{ fontSize: 13, color: "var(--text-tertiary)" }}>
+                  {formatDate(f.createdAt)}
+                </span>
+                <a
+                  href={`/api/uploads/download?fileId=${f.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: "inline-flex",
+                    justifyContent: "flex-end",
+                    color: "var(--slate-400)",
+                  }}
+                >
+                  <Download size={17} strokeWidth={1.8} />
+                </a>
+              </div>
+            ))}
           </div>
         )}
       </div>
-
-      {error && <p className="text-red-500 text-xs mt-1">{error}</p>}
-
-      {fileList.length > 0 && (
-        <ul className="mt-2 divide-y divide-gray-100 border border-gray-200 rounded-lg">
-          {fileList.map((f) => (
-            <li
-              key={f.id}
-              className="flex items-center justify-between px-3 py-2 text-xs"
-            >
-              <div className="truncate">
-                <span className="font-medium text-gray-800">{f.name}</span>
-                <span className="text-gray-400 ml-2">
-                  {formatBytes(f.sizeBytes)}
-                </span>
-                <span className="text-gray-400 ml-2">
-                  par {uploaderLabel(f.uploadedBy)}
-                </span>
-              </div>
-              <a
-                href={`/api/uploads/download?fileId=${f.id}`}
-                className="text-indigo-600 hover:underline ml-3 shrink-0"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Télécharger
-              </a>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+    </section>
   );
 }

@@ -20,11 +20,9 @@ export default function InlineStatusSelect({
   const router = useRouter();
   const [status, setStatus] = useState(initialStatus);
   const [isPending, startTransition] = useTransition();
-  const tone = STATUS_TONE[status] ?? "neutral";
-  const s = TONE_STYLE[tone];
 
-  function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    const next = e.target.value;
+  function handleClick(next: string) {
+    if (next === status || isPending) return;
     const prev = status;
     setStatus(next);
     startTransition(async () => {
@@ -35,31 +33,58 @@ export default function InlineStatusSelect({
   }
 
   return (
-    <select
-      value={status}
-      onChange={handleChange}
-      disabled={isPending}
-      onClick={(e) => e.stopPropagation()}
+    <div
       style={{
-        appearance: "none",
-        border: "none",
-        cursor: isPending ? "default" : "pointer",
-        padding: "5px 10px",
-        borderRadius: 9999,
-        fontSize: 12.5,
-        fontWeight: 600,
-        background: s.bg,
-        color: s.fg,
-        opacity: isPending ? 0.6 : 1,
-        outline: "none",
-        fontFamily: "var(--font-sans)",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 3,
+        padding: 3,
+        background: "var(--surface-sunken)",
+        border: "1px solid var(--border-default)",
+        borderRadius: "var(--radius-md)",
+        opacity: isPending ? 0.7 : 1,
       }}
     >
-      {STATUSES.map((v) => (
-        <option key={v} value={v}>
-          {STATUS_LABELS[v] ?? v}
-        </option>
-      ))}
-    </select>
+      {STATUSES.map((key) => {
+        const active = key === status;
+        const tone = STATUS_TONE[key] ?? "neutral";
+        const s = TONE_STYLE[tone];
+        return (
+          <button
+            key={key}
+            type="button"
+            onClick={() => handleClick(key)}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 7,
+              padding: "7px 13px",
+              borderRadius: "var(--radius-sm)",
+              border: "none",
+              fontFamily: "var(--font-sans)",
+              fontSize: 13,
+              cursor: isPending ? "default" : "pointer",
+              transition: "all 0.15s ease-out",
+              whiteSpace: "nowrap",
+              background: active ? "var(--surface-card)" : "transparent",
+              color: active ? "var(--text-primary)" : "var(--text-secondary)",
+              fontWeight: active ? 600 : 500,
+              boxShadow: active ? "var(--shadow-xs)" : "none",
+            }}
+          >
+            <span
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: 9999,
+                flexShrink: 0,
+                background: active ? s.dot : "var(--slate-300)",
+              }}
+            />
+            {STATUS_LABELS[key] ?? key}
+          </button>
+        );
+      })}
+    </div>
   );
 }

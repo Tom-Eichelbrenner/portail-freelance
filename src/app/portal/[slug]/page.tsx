@@ -193,6 +193,7 @@ export default async function PortalPage({ params, searchParams }: Props) {
                 (f) => ({
                   id: f.id,
                   name: f.name,
+                  mimeType: f.mimeType,
                   sizeBytes: f.sizeBytes,
                   uploadedBy: f.uploadedBy,
                   createdAt: f.createdAt.toISOString(),
